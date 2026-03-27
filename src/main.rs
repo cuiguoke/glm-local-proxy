@@ -84,6 +84,13 @@ async fn chat_completions(
         }
     }
 
+    // Round temperature to avoid floating-point noise (e.g. 0.6999999999 → 0.7)
+    // GLM domestic API returns error 1210 on such values.
+    if let Some(t) = body.get("temperature").and_then(|v| v.as_f64()) {
+        let rounded = (t * 100.0).round() / 100.0;
+        body["temperature"] = json!(rounded);
+    }
+
     // Fix tool schemas: remove unsupported JSON Schema keywords
     if let Some(tools) = body["tools"].as_array_mut() {
         for tool in tools {

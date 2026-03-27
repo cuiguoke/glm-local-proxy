@@ -10,6 +10,7 @@
 | Tool Schema | 支持 `anyOf`/`oneOf`/`allOf` | 不支持，会返回 1210 错误 |
 | 类型定义 | `"type": ["string", "null"]` | 必须是单个字符串 `"type": "string"` |
 | 额外属性 | `"additionalProperties": false` | 不支持 |
+| temperature 精度 | `0.6999999999`（浮点噪声） | 必须是合理精度，否则返回 1210 错误 |
 
 这些不兼容导致使用 rig-core 的应用（如 IronClaw）在调用 GLM 国内版 API 时持续报错：
 
@@ -79,6 +80,16 @@ API Key 在 [智谱 AI 开放平台](https://open.bigmodel.cn/usercenter/apikeys
 
 // 输出（GLM 接受）
 {"role": "user", "content": "你好"}
+```
+
+**temperature 精度修正**
+
+```json
+// 输入（浮点噪声）
+{"temperature": 0.6999999999}
+
+// 输出（四舍五入到两位小数）
+{"temperature": 0.7}
 ```
 
 **Tool Schema 清洗**
