@@ -93,6 +93,8 @@ async fn chat_completions(
         }
     }
 
+    tracing::trace!(body = %body, "Sanitized request body");
+
     let url = format!("{}/chat/completions", state.glm_base_url);
 
     tracing::debug!(%url, "Forwarding to GLM");
