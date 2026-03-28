@@ -138,20 +138,28 @@ async fn chat_completions(
             "GLM returned error"
         );
 
-        // Map GLM 1261 (prompt too long) to standard OpenAI context_length_exceeded
-        // so IronClaw can trigger compact_messages_for_retry automatically.
+        // Map GLM 1261 (prompt too long) to a synthetic 200 response with an
+        // assistant message. IronClaw has no production code path that converts
+        // HTTP errors to ContextLengthExceeded, so the only way to surface this
+        // to the user without modifying ironclaw is to return a valid response.
         let code = glm_body.pointer("/error/code").and_then(|v| v.as_str()).unwrap_or("");
         if code == "1261" {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": {
-                        "message": "This model's maximum context length has been exceeded.",
-                        "type": "invalid_request_error",
-                        "code": "context_length_exceeded"
-                    }
-                })),
-            ));
+            tracing::warn!("GLM 1261: prompt too long, returning synthetic assistant message");
+            let model = body["model"].as_str().unwrap_or("glm").to_string();
+            return Ok(Json(json!({
+                "id": "proxy-context-exceeded",
+                "object": "chat.completion",
+                "model": model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "⚠️ 对话历史已超出模型上下文限制（GLM error 1261）。请输入 /compact 压缩历史，或 /clear 开始新对话。"
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            })));
         }
 
         return Err((
