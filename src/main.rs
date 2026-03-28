@@ -132,34 +132,25 @@ async fn chat_completions(
     if !status.is_success() {
         let glm_body = glm_body;
 
-        tracing::warn!(
-            status = status.as_u16(),
-            error = ?glm_body,
-            "GLM returned error"
-        );
-
-        // Map GLM 1261 (prompt too long) to a synthetic 200 response with an
-        // assistant message. IronClaw has no production code path that converts
-        // HTTP errors to ContextLengthExceeded, so the only way to surface this
-        // to the user without modifying ironclaw is to return a valid response.
         let code = glm_body.pointer("/error/code").and_then(|v| v.as_str()).unwrap_or("");
+        let message = glm_body.pointer("/error/message").and_then(|v| v.as_str()).unwrap_or("");
+
         if code == "1261" {
-            tracing::warn!("GLM 1261: prompt too long, returning synthetic assistant message");
-            let model = body["model"].as_str().unwrap_or("glm").to_string();
-            return Ok(Json(json!({
-                "id": "proxy-context-exceeded",
-                "object": "chat.completion",
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "⚠️ 对话历史已超出模型上下文限制（GLM error 1261）。请输入 /compact 压缩历史，或 /clear 开始新对话。"
-                    },
-                    "finish_reason": "stop"
-                }],
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            })));
+            tracing::warn!(
+                num_messages = body["messages"].as_array().map(|a| a.len()).unwrap_or(0),
+                model = body["model"].as_str().unwrap_or("unknown"),
+                "GLM error 1261: prompt exceeds context limit. \
+                 IronClaw will retry (rig-core maps all HTTP 4xx to RequestFailed, \
+                 not ContextLengthExceeded, so auto-compaction is not triggered). \
+                 Use /compact or /clear to reduce context manually."
+            );
+        } else {
+            tracing::warn!(
+                status = status.as_u16(),
+                code,
+                message,
+                "GLM returned error"
+            );
         }
 
         return Err((
