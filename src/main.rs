@@ -130,11 +130,30 @@ async fn chat_completions(
     })?;
 
     if !status.is_success() {
+        let glm_body = glm_body;
+
         tracing::warn!(
             status = status.as_u16(),
             error = ?glm_body,
             "GLM returned error"
         );
+
+        // Map GLM 1261 (prompt too long) to standard OpenAI context_length_exceeded
+        // so IronClaw can trigger compact_messages_for_retry automatically.
+        let code = glm_body.pointer("/error/code").and_then(|v| v.as_str()).unwrap_or("");
+        if code == "1261" {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": {
+                        "message": "This model's maximum context length has been exceeded.",
+                        "type": "invalid_request_error",
+                        "code": "context_length_exceeded"
+                    }
+                })),
+            ));
+        }
+
         return Err((
             StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
             Json(glm_body),
